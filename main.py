@@ -1,11 +1,24 @@
+import os
 import streamlit as st
 import requests
-import json
 from openai import OpenAI
-import config  # Import the config file containing API keys
+from dotenv import load_dotenv
+import base64
+import json
+
+# Load environment variables from a .env file for development purposes
+load_dotenv()
+
+# Set API keys using environment variables
+companies_house_api_key = os.getenv("COMPANIES_HOUSE_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+news_api_key = os.getenv("NEWS_API_KEY")
 
 # Set page configuration
 st.set_page_config(page_title="Company Info App", layout="wide")
+
+# OpenAI setup
+client = OpenAI(api_key=openai_api_key)
 
 def main():
     # Initialize session state if not already set
@@ -47,23 +60,31 @@ def select_companies():
         return
     
     confirmed_companies = {}
-    companies_house_api_key = config.COMPANIES_HOUSE_API_KEY  # Get API key from config
     
     for company_name in st.session_state['company_names']:
         st.subheader(f"Results for '{company_name}'")
         
         # Search Companies House API
-        headers = {'Authorization': companies_house_api_key}
-        params = {'q': company_name}
-        response = requests.get(
-            'https://api.company-information.service.gov.uk/search/companies',
-            headers=headers,
-            params=params
-        )
-        
-        if response.status_code != 200:
-            st.error(f"Error fetching data for '{company_name}'. Please check your API key.")
+        if not companies_house_api_key:
+            st.error("Companies House API key is missing.")
             return
+        auth_string = f"{companies_house_api_key}:"
+        headers = {
+            'Authorization': 'Basic ' + base64.b64encode(auth_string.encode()).decode()
+        }
+        params = {'q': company_name}
+        
+        with st.spinner('Fetching company data...'):
+            try:
+                response = requests.get(
+                    'https://api.company-information.service.gov.uk/search/companies',
+                    headers=headers,
+                    params=params
+                )
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                st.error(f"Error fetching data for '{company_name}': {e}")
+                continue
         
         data = response.json()
         items = data.get('items', [])
@@ -97,15 +118,7 @@ def show_company_details():
         st.warning("No confirmed companies found.")
         return
     
-    companies_house_api_key = config.COMPANIES_HOUSE_API_KEY
     companies = st.session_state['confirmed_companies']
-    
-    # Set OpenAI API key from config
-    openai_api_key = config.OPENAI_API_KEY
-    client = OpenAI(api_key=openai_api_key)
-    
-    # Get News API key from config
-    news_api_key = config.NEWS_API_KEY
     
     tabs = st.tabs(list(companies.keys()))
     
@@ -113,15 +126,24 @@ def show_company_details():
         with tabs[idx]:
             company_number = companies[company_name]
             # Fetch company details from Companies House API
-            headers = {'Authorization': companies_house_api_key}
-            response = requests.get(
-                f'https://api.company-information.service.gov.uk/company/{company_number}',
-                headers=headers
-            )
+            if not companies_house_api_key:
+                st.error("Companies House API key is missing.")
+                return
+            auth_string = f"{companies_house_api_key}:"
+            headers = {
+                'Authorization': 'Basic ' + base64.b64encode(auth_string.encode()).decode()
+            }
             
-            if response.status_code != 200:
-                st.error(f"Error fetching details for '{company_name}'.")
-                continue
+            with st.spinner('Fetching company details...'):
+                try:
+                    response = requests.get(
+                        f'https://api.company-information.service.gov.uk/company/{company_number}',
+                        headers=headers
+                    )
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Error fetching details for '{company_name}': {e}")
+                    continue
             
             company_data = response.json()
             
@@ -154,18 +176,22 @@ def show_company_details():
             
             if 'Officers' in selected_info:
                 # Fetch officers
-                officers_response = requests.get(
-                    f'https://api.company-information.service.gov.uk/company/{company_number}/officers',
-                    headers=headers
-                )
-                if officers_response.status_code == 200:
+                with st.spinner('Fetching officer information...'):
+                    try:
+                        officers_response = requests.get(
+                            f'https://api.company-information.service.gov.uk/company/{company_number}/officers',
+                            headers=headers
+                        )
+                        officers_response.raise_for_status()
+                    except requests.exceptions.RequestException as e:
+                        st.write("Could not retrieve officers information.")
+                        continue
+                    
                     officers_data = officers_response.json()
                     officers = officers_data.get('items', [])
                     st.write("**Officers:**")
                     for officer in officers:
                         st.write(f"- {officer.get('name')} ({officer.get('officer_role')})")
-                else:
-                    st.write("Could not retrieve officers information.")
             
             # Recent news section
             st.write("**Recent News:**")
@@ -175,17 +201,19 @@ def show_company_details():
                 'pageSize': 5,
                 'sortBy': 'publishedAt'
             }
-            news_response = requests.get('https://newsapi.org/v2/everything', params=news_params)
-            if news_response.status_code == 200:
-                news_data = news_response.json()
-                articles = news_data.get('articles', [])
-                if articles:
-                    for article in articles:
-                        st.write(f"- [{article.get('title')}]({article.get('url')})")
+            
+            with st.spinner('Fetching recent news...'):
+                news_response = requests.get('https://newsapi.org/v2/everything', params=news_params)
+                if news_response.status_code == 200:
+                    news_data = news_response.json()
+                    articles = news_data.get('articles', [])
+                    if articles:
+                        for article in articles:
+                            st.write(f"- [{article.get('title')}]({article.get('url')})")
+                    else:
+                        st.write("No recent news found.")
                 else:
-                    st.write("No recent news found.")
-            else:
-                st.write("Error fetching news articles.")
+                    st.write("Error fetching news articles.")
             
             # Generate 250-word summary
             st.write("**Summary:**")
@@ -199,8 +227,8 @@ def show_company_details():
                 summary_prompt += "No recent news articles available.\n"
             
             try:
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                completion = client.chat.completions.create(
+                    model="gpt-4",
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that summarizes company information."},
                         {"role": "user", "content": summary_prompt}
@@ -208,7 +236,7 @@ def show_company_details():
                     max_tokens=400,
                     temperature=0.7
                 )
-                summary = response.choices[0].message.content.strip()
+                summary = completion.choices[0].message.content.strip()
                 st.write(summary)
             except Exception as e:
                 st.write("Error generating summary:", e)
