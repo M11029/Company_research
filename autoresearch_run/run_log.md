@@ -188,6 +188,22 @@ i11: 8.48 ████████ ← BEST
 4. **+0.62** — Expanded risk analysis
 5. **+0.47** — Quarterly action roadmap
 
+### Post-Convergence Correction — Iteration 12
+
+Deep research agent returned with BDLA membership data and Companies House firm-size data that materially changed the market model:
+
+| Factor | v11 Estimate | Corrected (v12) |
+|--------|-------------|-----------------|
+| Specialist bridge lenders | 200–310 | **60–100** (BDLA has ~50 lender members) |
+| Avg seats per firm | 5 | **12** (Aspen: 18–27 employees; mid-size typical: 15–50) |
+| Average ACV | £21K | **£50.4K** |
+| Firms for £1M ARR | ~48 | **~20** |
+| Market penetration needed | 15–24% | **20–33%** |
+
+Also added Kennek (£20M raise, modern LOS for bridging) as competitive threat, and LendFusion pricing (€1,659/mo flat, unlimited users) for pricing comparison.
+
+**Score: 8.71 → KEEP** (vs 8.48) — material improvement from grounded firm-size data
+
 ### Directions that didn't improve
 - International expansion (speculative, off-topic)
 - Executive summary restructure (lost depth)
